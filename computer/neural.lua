@@ -26,9 +26,6 @@ if not (has("plethora:introspection") or has("introspection")) then
   error("Neural Interface missing introspection module")
 end
 
-if not (has("plethora:laser") or has("laser")) then
-  error("Neural Interface missing laser module")
-end
 
 local function say(msg)
   if has("plethora:chat") or has("chat") then
@@ -98,9 +95,11 @@ local function tryAttack()
     end
   end
 
-  if closest and closest.id then
+  if closest then
+    if neural.lookAt then
+      pcall(neural.lookAt, closest.position or closest)
+    end
     pcall(neural.use, WEAPON_SLOT)
-    neural.fire(closest.id)
   end
 end
 
