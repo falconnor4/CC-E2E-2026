@@ -1,78 +1,158 @@
---- This script attempts to keep the player fully fed by checking their food level and scanning for food items.
+--- Auto-eat + ore scanner minimap (Plethora)
 
---- Firstly we find a manipulator or neural interface and error if it is not there.
+local scanInterval = 0.2
+local renderInterval = 0.05
+local scannerRange = 8
+local scannerWidth = scannerRange * 2 + 1
+
+local size = 0.5
+local cellSize = 16
+local offsetX = 75
+local offsetY = 75
+
+local ores = {
+  ["minecraft:diamond_ore"] = 10,
+  ["minecraft:emerald_ore"] = 10,
+  ["minecraft:gold_ore"] = 8,
+  ["minecraft:redstone_ore"] = 5,
+  ["minecraft:lapis_ore"] = 5,
+  ["minecraft:iron_ore"] = 2,
+  ["minecraft:coal_ore"] = 1,
+}
+
+local colours = {
+  ["minecraft:coal_ore"] = { 150, 150, 150 },
+  ["minecraft:iron_ore"] = { 255, 150, 50 },
+  ["minecraft:lava"] = { 150, 75, 0 },
+  ["minecraft:gold_ore"] = { 255, 255, 0 },
+  ["minecraft:diamond_ore"] = { 0, 255, 255 },
+  ["minecraft:redstone_ore"] = { 255, 0, 0 },
+  ["minecraft:lapis_ore"] = { 0, 50, 255 },
+  ["minecraft:emerald_ore"] = { 0, 255, 0 },
+}
+
 local modules = peripheral.find("manipulator") or peripheral.find("neuralInterface")
-if not modules then
-	error("Must have neural interface or manipulator", 0)
-end
+if not modules then error("Must have neural interface or manipulator", 0) end
 
---- We require the entity sensor to get the food levels and the introspection module to access the player's
---- inventory. We use `hasModule` to ensure they are both there.
-if not modules.hasModule("plethora:sensor") then
-	error("The entity sensor is missing", 0)
-end
-if not modules.hasModule("plethora:introspection") then
-	error("The introspection module is missing", 0)
-end
+if not modules.hasModule("plethora:sensor") then error("The entity sensor is missing", 0) end
+if not modules.hasModule("plethora:introspection") then error("The introspection module is missing", 0) end
+if not modules.hasModule("plethora:scanner") then error("The block scanner is missing", 0) end
+if not modules.hasModule("plethora:glasses") then error("The overlay glasses are missing", 0) end
 
---- We'll want to scan the player's inventory a lot so we cache it here.
 local inv = modules.getInventory()
-
---- Instead of rescanning the inventory every time we cache the last slot we ate from. As we haven't searched for food
---- yet, we'll just use nil.
 local cachedSlot = false
 
---- We run this top level loop continuously, checking every 5 seconds to see if the player is hungry. This means we will
---- feed the player pretty quickly after they become hungry.
-while true do
-	--- We fetch the metadata about the current owner which includes food levels. We run this inner loop whilst the
-	--- player is hungry to ensure they are fed quickly without a delay (which you would get if this ran in the top
-	--- loop).
-	local data = modules.getMetaOwner()
-	while data.food.hungry do
-		--- We want to find an item that we can eat. Note that this does not search for the most "optimal" piece of
-		--- food, just the first one it finds.
+local canvas = modules.canvas()
+canvas.clear()
 
-		--- First we look in the `cachedSlot` if we have one from before. If it is a food we use it, otherwise we reset
-		--- the cached slot.
-		local item
-		if cachedSlot then
-			local slotItem = inv.getItem(cachedSlot)
-			if slotItem and slotItem.consume then
-				item = slotItem
-			else
-				cachedSlot = nil
-			end
-		end
+local block_text = {}
+local blocks = {}
+for x = -scannerRange, scannerRange do
+  block_text[x] = {}
+  blocks[x] = {}
 
-		--- If the cached slot didn't yield any food then scan the reset of the inventory. We use `.list()` instead of
-		--- iterating over each slot as this guarentees there will be an item there, making the scanning slightly
-		--- quicker. If we find a food item then we cache the slot for next time and exit from the loop.
-		if not item then
-			for slot, meta in pairs(inv.list()) do
-				local slotItem = inv.getItem(slot)
-				if slotItem and slotItem.consume then
-					print("Using food from slot " .. slot)
-					item = slotItem
-					cachedSlot = slot
-					break
-				end
-			end
-		end
-
-		--- If we found food then we eat it and re-run the loop, otherwise we stop scanning this time and allow ourselves
-		--- to sleep.
-		if item then
-			item.consume()
-		else
-			print("Cannot find food")
-			break
-		end
-
-		--- As the hungry flag may have changed we refetch the data and rerun the feeding loop.
-		data = modules.getMetaOwner()
-	end
-
-	--- The player is now no longer hungry or we have no food so we sleep for a bit.
-	sleep(5)
+  for z = -scannerRange, scannerRange do
+    block_text[x][z] = canvas.addText({ 0, 0 }, " ", 0xFFFFFFFF, size)
+    blocks[x][z] = { y = nil, block = nil }
+  end
 end
+
+canvas.addText({ offsetX, offsetY }, "^", 0xFFFFFFFF, size * 2)
+
+local function autoEat()
+  while true do
+    local data = modules.getMetaOwner()
+    while data.food and data.food.hungry do
+      local item
+      if cachedSlot then
+        local slotItem = inv.getItem(cachedSlot)
+        if slotItem and slotItem.consume then
+          item = slotItem
+        else
+          cachedSlot = nil
+        end
+      end
+
+      if not item then
+        for slot, _ in pairs(inv.list()) do
+          local slotItem = inv.getItem(slot)
+          if slotItem and slotItem.consume then
+            item = slotItem
+            cachedSlot = slot
+            break
+          end
+        end
+      end
+
+      if item then
+        item.consume()
+      else
+        break
+      end
+
+      data = modules.getMetaOwner()
+    end
+
+    sleep(5)
+  end
+end
+
+local function scan()
+  while true do
+    local scanned_blocks = modules.scan()
+
+    for x = -scannerRange, scannerRange do
+      for z = -scannerRange, scannerRange do
+        local best_score, best_block, best_y = -1
+        for y = -scannerRange, scannerRange do
+          local scanned = scanned_blocks[scannerWidth ^ 2 * (x + scannerRange) + scannerWidth * (y + scannerRange) + (z + scannerRange) + 1]
+          if scanned then
+            local new_score = ores[scanned.name]
+            if new_score and new_score > best_score then
+              best_block = scanned.name
+              best_score = new_score
+              best_y = y
+            end
+          end
+        end
+
+        blocks[x][z].block = best_block
+        blocks[x][z].y = best_y
+      end
+    end
+
+    sleep(scanInterval)
+  end
+end
+
+local function render()
+  while true do
+    local meta = modules.getMetaOwner and modules.getMetaOwner()
+    local angle = meta and math.rad(-meta.yaw % 360) or math.rad(180)
+
+    for x = -scannerRange, scannerRange do
+      for z = -scannerRange, scannerRange do
+        local text = block_text[x][z]
+        local block = blocks[x][z]
+
+        if block.block then
+          local px = math.cos(angle) * -x - math.sin(angle) * -z
+          local py = math.sin(angle) * -x + math.cos(angle) * -z
+
+          local sx = math.floor(px * size * cellSize)
+          local sy = math.floor(py * size * cellSize)
+          text.setPosition(offsetX + sx, offsetY + sy)
+
+          text.setText(tostring(block.y))
+          text.setColor(table.unpack(colours[block.block]))
+        else
+          text.setText(" ")
+        end
+      end
+    end
+
+    sleep(renderInterval)
+  end
+end
+
+parallel.waitForAll(render, scan, autoEat)
