@@ -1,42 +1,20 @@
---- Auto-eat + ore scanner minimap (Plethora)
+--- Auto-eat + entity minimap (Plethora)
 
 local scanInterval = 0.2
 local renderInterval = 0.05
 local scannerRange = 8
-local scannerWidth = scannerRange * 2 + 1
+local maxEntities = 40
 
 local size = 0.5
 local cellSize = 16
 local offsetX = 75
 local offsetY = 75
 
-local ores = {
-  ["minecraft:diamond_ore"] = 10,
-  ["minecraft:emerald_ore"] = 10,
-  ["minecraft:gold_ore"] = 8,
-  ["minecraft:redstone_ore"] = 5,
-  ["minecraft:lapis_ore"] = 5,
-  ["minecraft:iron_ore"] = 2,
-  ["minecraft:coal_ore"] = 1,
-}
-
-local colours = {
-  ["minecraft:coal_ore"] = { 150, 150, 150 },
-  ["minecraft:iron_ore"] = { 255, 150, 50 },
-  ["minecraft:lava"] = { 150, 75, 0 },
-  ["minecraft:gold_ore"] = { 255, 255, 0 },
-  ["minecraft:diamond_ore"] = { 0, 255, 255 },
-  ["minecraft:redstone_ore"] = { 255, 0, 0 },
-  ["minecraft:lapis_ore"] = { 0, 50, 255 },
-  ["minecraft:emerald_ore"] = { 0, 255, 0 },
-}
-
 local modules = peripheral.find("manipulator") or peripheral.find("neuralInterface")
 if not modules then error("Must have neural interface or manipulator", 0) end
 
 if not modules.hasModule("plethora:sensor") then error("The entity sensor is missing", 0) end
 if not modules.hasModule("plethora:introspection") then error("The introspection module is missing", 0) end
-if not modules.hasModule("plethora:scanner") then error("The block scanner is missing", 0) end
 if not modules.hasModule("plethora:glasses") then error("The overlay glasses are missing", 0) end
 
 local inv = modules.getInventory()
@@ -45,19 +23,20 @@ local cachedSlot = false
 local canvas = modules.canvas()
 canvas.clear()
 
-local block_text = {}
-local blocks = {}
-for x = -scannerRange, scannerRange do
-  block_text[x] = {}
-  blocks[x] = {}
-
-  for z = -scannerRange, scannerRange do
-    block_text[x][z] = canvas.addText({ 0, 0 }, " ", 0xFFFFFFFF, size)
-    blocks[x][z] = { y = nil, block = nil }
-  end
+local entityText = {}
+for i = 1, maxEntities do
+  entityText[i] = canvas.addText({ 0, 0 }, " ", 0xFFFFFFFF, size)
 end
 
 canvas.addText({ offsetX, offsetY }, "^", 0xFFFFFFFF, size * 2)
+
+local function healthColor(current, max)
+  if not current then return 0xFFFFFF end
+  local ratio = max and max > 0 and (current / max) or (current / 20)
+  if ratio >= 0.66 then return 0x00FF00 end
+  if ratio >= 0.33 then return 0xFFFF00 end
+  return 0xFF0000
+end
 
 local function autoEat()
   while true do
@@ -97,30 +76,32 @@ local function autoEat()
   end
 end
 
+local entities = {}
+
 local function scan()
   while true do
-    local scanned_blocks = modules.scan()
+    local sensed = modules.sense()
+    local list = {}
 
-    for x = -scannerRange, scannerRange do
-      for z = -scannerRange, scannerRange do
-        local best_score, best_block, best_y = -1
-        for y = -scannerRange, scannerRange do
-          local scanned = scanned_blocks[scannerWidth ^ 2 * (x + scannerRange) + scannerWidth * (y + scannerRange) + (z + scannerRange) + 1]
-          if scanned then
-            local new_score = ores[scanned.name]
-            if new_score and new_score > best_score then
-              best_block = scanned.name
-              best_score = new_score
-              best_y = y
-            end
+    if sensed then
+      for _, entity in pairs(sensed) do
+        if entity.name and entity.name ~= "minecraft:player" then
+          local pos = entity.position or entity
+          local health = entity.health and (entity.health.hp or entity.health) or entity.hp
+          local maxHealth = entity.health and (entity.health.maxHp or entity.health.max) or entity.maxHp
+          if health then
+            table.insert(list, {
+              name = entity.name,
+              position = pos,
+              health = health,
+              maxHealth = maxHealth,
+            })
           end
         end
-
-        blocks[x][z].block = best_block
-        blocks[x][z].y = best_y
       end
     end
 
+    entities = list
     sleep(scanInterval)
   end
 end
@@ -129,28 +110,32 @@ local function render()
   while true do
     local meta = modules.getMetaOwner and modules.getMetaOwner()
     local angle = meta and math.rad(-meta.yaw % 360) or math.rad(180)
+    local playerPos = meta and meta.position or { x = 0, y = 0, z = 0 }
 
-    for x = -scannerRange, scannerRange do
-      for z = -scannerRange, scannerRange do
-        local text = block_text[x][z]
-        local block = blocks[x][z]
-
-        if block.block then
-          local px = math.cos(angle) * -x - math.sin(angle) * -z
-          local py = math.sin(angle) * -x + math.cos(angle) * -z
-
-          local sx = math.floor(px * size * cellSize)
-          local sy = math.floor(py * size * cellSize)
-          text.setPosition(offsetX + sx, offsetY + sy)
-
-          text.setText(tostring(block.y))
-          text.setColor(table.unpack(colours[block.block]))
-        else
-          text.setText(" ")
-        end
-      end
+    for i = 1, maxEntities do
+      entityText[i].setText(" ")
     end
 
+    local idx = 1
+    for _, entity in ipairs(entities) do
+      if idx > maxEntities then break end
+      local pos = entity.position or {}
+      local dx = (pos.x or 0) - (playerPos.x or 0)
+      local dz = (pos.z or 0) - (playerPos.z or 0)
+
+      if math.abs(dx) <= scannerRange and math.abs(dz) <= scannerRange then
+        local px = math.cos(angle) * -dx - math.sin(angle) * -dz
+        local py = math.sin(angle) * -dx + math.cos(angle) * -dz
+
+        local sx = math.floor(px * size * cellSize)
+        local sy = math.floor(py * size * cellSize)
+        local text = entityText[idx]
+        text.setPosition(offsetX + sx, offsetY + sy)
+        text.setText(tostring(math.floor(entity.health + 0.5)))
+        text.setColor(healthColor(entity.health, entity.maxHealth))
+        idx = idx + 1
+      end
+    end
     sleep(renderInterval)
   end
 end
