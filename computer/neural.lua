@@ -60,12 +60,6 @@ end
 local playerMarker = canvas.addText({ 0, 0 }, "^", 0xFFFFFFFF, size * 2)
 
 local function getOffsets()
-  if canvas.getSize then
-    local w, h = canvas.getSize()
-    if w and h then
-      return w - defaultOffsetX, defaultOffsetY
-    end
-  end
   return defaultOffsetX, defaultOffsetY
 end
 
