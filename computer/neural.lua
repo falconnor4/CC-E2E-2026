@@ -2,6 +2,7 @@
 -- Attach a Neural Interface to this computer.
 
 local AUTO_EAT_THRESHOLD = 20
+local REFRESH_SECONDS = 0.25
 
 local neural = peripheral.find("neuralInterface") or peripheral.find("neural")
 if not neural then
@@ -54,9 +55,69 @@ local function tryEat()
   end
 end
 
-say("Neural auto-eat active")
-while true do
-  tryEat()
+local autoEatEnabled = true
 
-  os.sleep(0.1)
+local function formatBiome(biome)
+  if not biome or not biome.name then return "?" end
+  return biome.name
+end
+
+local function draw()
+  term.setBackgroundColor(colors.black)
+  term.setTextColor(colors.white)
+  term.clear()
+  term.setCursorPos(1, 1)
+
+  local info = neural.getMetaOwner() or {}
+  local pos = info.position or {}
+  local food = info.food or {}
+  local health = info.health or {}
+  local armor = info.armor or {}
+  local biome = info.biome or {}
+
+  print("Neural Interface Dashboard")
+  print(string.rep("-", 26))
+  print("Auto-eat: " .. (autoEatEnabled and "ON" or "OFF"))
+  print("Food slot: " .. FOOD_SLOT .. "  Threshold: " .. AUTO_EAT_THRESHOLD)
+  print("Health: " .. (health.hp or "?") .. "/" .. (health.maxHp or "?"))
+  print("Armor: " .. (armor.value or "?"))
+  print("Hunger: " .. (food.level or "?") .. "/20")
+  print("Pos: " .. math.floor(pos.x or 0) .. ", " .. math.floor(pos.y or 0) .. ", " .. math.floor(pos.z or 0))
+  print("Biome: " .. formatBiome(biome))
+  print("")
+  print("Keys: [E] Toggle auto-eat  [Q] Quit")
+end
+
+local function handleKeys(key)
+  if key == keys.e then
+    autoEatEnabled = not autoEatEnabled
+    say("Auto-eat " .. (autoEatEnabled and "enabled" or "disabled"))
+    return true
+  end
+  if key == keys.q then
+    return false
+  end
+  return true
+end
+
+say("Neural auto-eat active")
+draw()
+
+local refreshTimer = os.startTimer(REFRESH_SECONDS)
+while true do
+  local event, p1 = os.pullEvent()
+  if event == "key" then
+    if not handleKeys(p1) then
+      term.setCursorPos(1, 1)
+      term.clear()
+      break
+    end
+    draw()
+  elseif event == "timer" and p1 == refreshTimer then
+    if autoEatEnabled then
+      tryEat()
+    end
+    draw()
+    refreshTimer = os.startTimer(REFRESH_SECONDS)
+  end
 end
