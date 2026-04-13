@@ -7,8 +7,9 @@ local scannerWidth = scannerRange * 2 + 1
 
 local size = 0.5
 local cellSize = 16
-local offsetX = 75
-local offsetY = 75
+local defaultOffsetX = 75
+local defaultOffsetY = 75
+local offsetMargin = 10
 
 local ores = {
   ["minecraft:diamond_ore"] = 10,
@@ -57,7 +58,17 @@ for x = -scannerRange, scannerRange do
   end
 end
 
-canvas.addText({ offsetX, offsetY }, "^", 0xFFFFFFFF, size * 2)
+local playerMarker = canvas.addText({ 0, 0 }, "^", 0xFFFFFFFF, size * 2)
+
+local function getOffsets()
+  if canvas.getSize then
+    local w, h = canvas.getSize()
+    if w and h then
+      return w - offsetMargin, offsetMargin
+    end
+  end
+  return defaultOffsetX, defaultOffsetY
+end
 
 local function autoEat()
   while true do
@@ -129,6 +140,9 @@ local function render()
   while true do
     local meta = modules.getMetaOwner and modules.getMetaOwner()
     local angle = meta and math.rad(-meta.yaw % 360) or math.rad(180)
+    local offsetX, offsetY = getOffsets()
+
+    playerMarker.setPosition(offsetX, offsetY)
 
     for x = -scannerRange, scannerRange do
       for z = -scannerRange, scannerRange do
