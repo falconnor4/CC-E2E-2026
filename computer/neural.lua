@@ -89,14 +89,12 @@ local function scan()
           local pos = entity.position or entity
           local health = entity.health and (entity.health.hp or entity.health) or entity.hp
           local maxHealth = entity.health and (entity.health.maxHp or entity.health.max) or entity.maxHp
-          if health then
-            table.insert(list, {
-              name = entity.name,
-              position = pos,
-              health = health,
-              maxHealth = maxHealth,
-            })
-          end
+          table.insert(list, {
+            name = entity.name,
+            position = pos,
+            health = health,
+            maxHealth = maxHealth,
+          })
         end
       end
     end
@@ -131,8 +129,13 @@ local function render()
         local sy = math.floor(py * size * cellSize)
         local text = entityText[idx]
         text.setPosition(offsetX + sx, offsetY + sy)
-        text.setText(tostring(math.floor(entity.health + 0.5)))
-        text.setColor(healthColor(entity.health, entity.maxHealth))
+        if entity.health then
+          text.setText(tostring(math.floor(entity.health + 0.5)))
+          text.setColor(healthColor(entity.health, entity.maxHealth))
+        else
+          text.setText("o")
+          text.setColor(0xFFFFFF)
+        end
         idx = idx + 1
       end
     end
