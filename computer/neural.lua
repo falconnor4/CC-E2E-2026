@@ -9,7 +9,6 @@ local size = 0.5
 local cellSize = 16
 local defaultOffsetX = 75
 local defaultOffsetY = 75
-local offsetMargin = 10
 
 local ores = {
   ["minecraft:diamond_ore"] = 10,
@@ -64,7 +63,7 @@ local function getOffsets()
   if canvas.getSize then
     local w, h = canvas.getSize()
     if w and h then
-      return w - offsetMargin, offsetMargin
+      return w - defaultOffsetX, defaultOffsetY
     end
   end
   return defaultOffsetX, defaultOffsetY
