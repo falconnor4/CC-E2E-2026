@@ -5,6 +5,7 @@ local CONFIG_PATH = "mesh/node_config.lua"
 local DEFAULT_ROLE = "unassigned"
 local SEND_INTERVAL = 2
 local COMPARATOR_SIDES = { "top", "bottom", "left", "right", "front", "back" }
+local UPDATE_BASE_URL = "https://raw.githubusercontent.com/falconnor4/CC-E2E-2026/main/"
 
 local modem = peripheral.find("modem")
 if not modem then error("Ender modem not found") end
@@ -96,10 +97,46 @@ end
 
 local config = ensureConfig()
 
-while true do
-  modem.transmit(MESH_CHANNEL, MESH_CHANNEL, {
-    type = "mesh_status",
-    node = getMeta(config),
-  })
-  os.sleep(SEND_INTERVAL)
+local function sendLoop()
+  while true do
+    modem.transmit(MESH_CHANNEL, MESH_CHANNEL, {
+      type = "mesh_status",
+      node = getMeta(config),
+    })
+    os.sleep(SEND_INTERVAL)
+  end
 end
+
+local function applyUpdate(msg)
+  if not http or not http.get then return end
+  local base = msg.baseUrl or UPDATE_BASE_URL
+  local files = msg.files or { "mesh/node.lua" }
+
+  for _, path in ipairs(files) do
+    local res = http.get(base .. path)
+    if res then
+      local body = res.readAll()
+      res.close()
+      local handle = fs.open(path, "w")
+      handle.write(body)
+      handle.close()
+    end
+  end
+
+  os.reboot()
+end
+
+local function receiveLoop()
+  while true do
+    local _, _, _, _, msg = os.pullEvent("modem_message")
+    if type(msg) == "table" and msg.type == "mesh_command" and msg.cmd == "update" then
+      if msg.target and msg.target ~= config.id then
+        -- not for us
+      else
+        applyUpdate(msg)
+      end
+    end
+  end
+end
+
+parallel.waitForAny(sendLoop, receiveLoop)

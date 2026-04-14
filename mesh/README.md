@@ -15,3 +15,8 @@ Status monitoring mesh for CC:Tweaked using ender modems.
 
 Each node will prompt once for a name and role and save it to `mesh/node_config.lua`.
 Edit `MESH_CHANNEL` in both scripts if desired.
+
+## Updating nodes
+
+Run `mesh/update.lua` on the hub to push an update command. Nodes will fetch files
+from GitHub and reboot. Use `mesh/update.lua <nodeName>` to target a single node.
