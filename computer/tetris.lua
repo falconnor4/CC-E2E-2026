@@ -11,7 +11,6 @@ term.setBackgroundColor(colors.black)
 term.setTextColor(colors.white)
 
 local boardW, boardH = 10, 20
-local offsetX, offsetY = 2, 2
 
 local pieces = {
   I = { { 0, 1 }, { 1, 1 }, { 2, 1 }, { 3, 1 } },
@@ -119,7 +118,7 @@ local function clearLines(board)
   return cleared
 end
 
-local function drawCell(x, y, color)
+local function drawCell(offsetX, offsetY, x, y, color)
   term.setCursorPos(offsetX + x * 2 - 1, offsetY + y - 1)
   term.setBackgroundColor(color or colors.black)
   term.write("  ")
@@ -141,15 +140,34 @@ local function drawBoard(board, piece, score)
   term.setBackgroundColor(colors.black)
   term.clear()
 
+  local w, h = term.getSize()
+  local boardPixelW = boardW * 2
+  local boardPixelH = boardH
+  local offsetX = math.max(2, math.floor((w - boardPixelW) / 2) + 1)
+  local offsetY = math.max(2, math.floor((h - boardPixelH) / 2) - 1)
+
   term.setCursorPos(1, 1)
   term.setTextColor(colors.white)
   term.write("Tetris")
   term.setCursorPos(10, 1)
   term.write("Score " .. score)
 
+  term.setTextColor(colors.white)
+  term.setBackgroundColor(colors.black)
+  term.setCursorPos(offsetX - 1, offsetY - 1)
+  term.write("+" .. string.rep("-", boardPixelW) .. "+")
+  for y = 1, boardPixelH do
+    term.setCursorPos(offsetX - 1, offsetY + y - 1)
+    term.write("|")
+    term.setCursorPos(offsetX + boardPixelW, offsetY + y - 1)
+    term.write("|")
+  end
+  term.setCursorPos(offsetX - 1, offsetY + boardPixelH)
+  term.write("+" .. string.rep("-", boardPixelW) .. "+")
+
   for y = 1, boardH do
     for x = 1, boardW do
-      drawCell(x, y, board[y][x])
+      drawCell(offsetX, offsetY, x, y, board[y][x])
     end
   end
 
@@ -157,24 +175,27 @@ local function drawBoard(board, piece, score)
     local x = piece.x + piece.blocks[i][1]
     local y = piece.y + piece.blocks[i][2]
     if y >= 1 then
-      drawCell(x, y, colorsByPiece[piece.key])
+      drawCell(offsetX, offsetY, x, y, colorsByPiece[piece.key])
     end
   end
 
-  local w, h = term.getSize()
-  local btnY = h - 2
-  drawButton(1, btnY, 6, h, "LEFT")
-  drawButton(8, btnY, 13, h, "RIGHT")
-  drawButton(15, btnY, 20, h, "ROT")
-  drawButton(22, btnY, 27, h, "DOWN")
-  drawButton(29, btnY, math.min(w, 34), h, "DROP")
+  local btnBaseY = h - 3
+  drawButton(2, btnBaseY + 1, 6, h, "<-")
+  drawButton(8, btnBaseY + 1, 12, h, "->")
+  drawButton(5, btnBaseY - 1, 9, btnBaseY + 1, "^")
+  drawButton(5, btnBaseY + 1, 9, h, "v")
+
+  local aX1, aX2 = w - 8, w - 5
+  local bX1, bX2 = w - 13, w - 10
+  drawButton(bX1, btnBaseY + 1, bX2, h, "B")
+  drawButton(aX1, btnBaseY, aX2, h - 1, "A")
 end
 
 local board = newBoard()
 local piece = spawnPiece()
 local score = 0
 local dropDelay = 0.6
-local lastDrop = os.clock()
+local timer = os.startTimer(dropDelay)
 
 drawBoard(board, piece, score)
 
@@ -184,25 +205,25 @@ while true do
   if event == "monitor_touch" and p1 == monitorName then
     local x, y = p2, p3
     local w, h = term.getSize()
-    local btnY = h - 2
-    if y >= btnY then
-      if x >= 1 and x <= 6 then
+    local btnBaseY = h - 3
+
+    if y >= btnBaseY then
+      if x >= 2 and x <= 6 then
         if not collides(board, piece, -1, 0) then piece.x = piece.x - 1 end
-      elseif x >= 8 and x <= 13 then
+      elseif x >= 8 and x <= 12 then
         if not collides(board, piece, 1, 0) then piece.x = piece.x + 1 end
-      elseif x >= 15 and x <= 20 then
+      elseif x >= 5 and x <= 9 and y <= btnBaseY + 1 then
         local rotated = rotate(piece.blocks)
         if not collides(board, piece, 0, 0, rotated) then piece.blocks = rotated end
-      elseif x >= 22 and x <= 27 then
+      elseif x >= 5 and x <= 9 and y >= btnBaseY + 1 then
         if not collides(board, piece, 0, 1) then piece.y = piece.y + 1 end
-      elseif x >= 29 and x <= math.min(w, 34) then
+      elseif x >= w - 13 and x <= w - 10 then
+        if not collides(board, piece, 0, 1) then piece.y = piece.y + 1 end
+      elseif x >= w - 8 and x <= w - 5 then
         while not collides(board, piece, 0, 1) do piece.y = piece.y + 1 end
       end
     end
-  end
-
-  local now = os.clock()
-  if now - lastDrop >= dropDelay then
+  elseif event == "timer" and p1 == timer then
     if not collides(board, piece, 0, 1) then
       piece.y = piece.y + 1
     else
@@ -217,7 +238,7 @@ while true do
         break
       end
     end
-    lastDrop = now
+    timer = os.startTimer(dropDelay)
   end
 
   drawBoard(board, piece, score)
