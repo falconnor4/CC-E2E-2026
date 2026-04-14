@@ -118,10 +118,10 @@ local function clearLines(board)
   return cleared
 end
 
-local function drawCell(offsetX, offsetY, x, y, color)
-  term.setCursorPos(offsetX + x * 2 - 1, offsetY + y - 1)
+local function drawCell(offsetX, offsetY, cellW, x, y, color)
+  term.setCursorPos(offsetX + x * cellW - (cellW - 1), offsetY + y - 1)
   term.setBackgroundColor(color or colors.black)
-  term.write("  ")
+  term.write(string.rep(" ", cellW))
 end
 
 local function drawButton(x1, y1, x2, y2, label)
@@ -136,15 +136,42 @@ local function drawButton(x1, y1, x2, y2, label)
   term.write(label)
 end
 
+local function layout()
+  local w, h = term.getSize()
+  local cellW = 2
+  local boardPixelW = boardW * cellW
+  local boardPixelH = boardH
+
+  if boardPixelW + 2 > w then
+    cellW = 1
+    boardPixelW = boardW * cellW
+  end
+
+  local controlsH = 4
+  local offsetX = math.max(2, math.floor((w - boardPixelW) / 2) + 1)
+  local offsetY = math.max(2, math.floor((h - boardPixelH - controlsH) / 2))
+
+  local controlsY = offsetY + boardPixelH + 1
+  return {
+    w = w,
+    h = h,
+    cellW = cellW,
+    boardPixelW = boardPixelW,
+    boardPixelH = boardPixelH,
+    offsetX = offsetX,
+    offsetY = offsetY,
+    controlsY = controlsY,
+  }
+end
+
 local function drawBoard(board, piece, score)
   term.setBackgroundColor(colors.black)
   term.clear()
 
-  local w, h = term.getSize()
-  local boardPixelW = boardW * 2
-  local boardPixelH = boardH
-  local offsetX = math.max(2, math.floor((w - boardPixelW) / 2) + 1)
-  local offsetY = math.max(2, math.floor((h - boardPixelH) / 2) - 1)
+  local l = layout()
+  local w, h = l.w, l.h
+  local boardPixelW, boardPixelH = l.boardPixelW, l.boardPixelH
+  local offsetX, offsetY = l.offsetX, l.offsetY
 
   term.setCursorPos(1, 1)
   term.setTextColor(colors.white)
@@ -167,7 +194,7 @@ local function drawBoard(board, piece, score)
 
   for y = 1, boardH do
     for x = 1, boardW do
-      drawCell(offsetX, offsetY, x, y, board[y][x])
+      drawCell(offsetX, offsetY, l.cellW, x, y, board[y][x])
     end
   end
 
@@ -175,20 +202,28 @@ local function drawBoard(board, piece, score)
     local x = piece.x + piece.blocks[i][1]
     local y = piece.y + piece.blocks[i][2]
     if y >= 1 then
-      drawCell(offsetX, offsetY, x, y, colorsByPiece[piece.key])
+      drawCell(offsetX, offsetY, l.cellW, x, y, colorsByPiece[piece.key])
     end
   end
 
-  local btnBaseY = h - 3
-  drawButton(2, btnBaseY + 1, 6, h, "<-")
-  drawButton(8, btnBaseY + 1, 12, h, "->")
-  drawButton(5, btnBaseY - 1, 9, btnBaseY + 1, "^")
-  drawButton(5, btnBaseY + 1, 9, h, "v")
+  local btnY = math.min(h - 2, l.controlsY)
+  local btnBottom = math.min(h, btnY + 2)
 
-  local aX1, aX2 = w - 8, w - 5
-  local bX1, bX2 = w - 13, w - 10
-  drawButton(bX1, btnBaseY + 1, bX2, h, "B")
-  drawButton(aX1, btnBaseY, aX2, h - 1, "A")
+  local dpadX = offsetX
+  drawButton(dpadX, btnY + 1, dpadX + 2, btnBottom, "<")
+  drawButton(dpadX + 6, btnY + 1, dpadX + 8, btnBottom, ">")
+  drawButton(dpadX + 3, btnY, dpadX + 5, btnY + 1, "^")
+  drawButton(dpadX + 3, btnY + 1, dpadX + 5, btnBottom, "v")
+
+  local startX = offsetX + math.floor(boardPixelW / 2) - 3
+  drawButton(startX, btnY + 1, startX + 6, btnBottom, "START")
+
+  local aX2 = offsetX + boardPixelW
+  local aX1 = math.max(offsetX + boardPixelW - 4, aX2 - 3)
+  local bX2 = aX1 - 2
+  local bX1 = bX2 - 3
+  drawButton(bX1, btnY + 1, bX2, btnBottom, "B")
+  drawButton(aX1, btnY, aX2, btnBottom - 1, "A")
 end
 
 local board = newBoard()
@@ -197,6 +232,13 @@ local score = 0
 local dropDelay = 0.6
 local timer = os.startTimer(dropDelay)
 
+local function resetGame()
+  board = newBoard()
+  piece = spawnPiece()
+  score = 0
+  timer = os.startTimer(dropDelay)
+end
+
 drawBoard(board, piece, score)
 
 while true do
@@ -204,22 +246,31 @@ while true do
 
   if event == "monitor_touch" and p1 == monitorName then
     local x, y = p2, p3
-    local w, h = term.getSize()
-    local btnBaseY = h - 3
+    local l = layout()
+    local btnY = math.min(l.h - 2, l.controlsY)
+    local btnBottom = math.min(l.h, btnY + 2)
+    local dpadX = l.offsetX
+    local startX = l.offsetX + math.floor(l.boardPixelW / 2) - 3
+    local aX2 = l.offsetX + l.boardPixelW
+    local aX1 = math.max(l.offsetX + l.boardPixelW - 4, aX2 - 3)
+    local bX2 = aX1 - 2
+    local bX1 = bX2 - 3
 
-    if y >= btnBaseY then
-      if x >= 2 and x <= 6 then
+    if y >= btnY and y <= btnBottom then
+      if x >= dpadX and x <= dpadX + 2 then
         if not collides(board, piece, -1, 0) then piece.x = piece.x - 1 end
-      elseif x >= 8 and x <= 12 then
+      elseif x >= dpadX + 6 and x <= dpadX + 8 then
         if not collides(board, piece, 1, 0) then piece.x = piece.x + 1 end
-      elseif x >= 5 and x <= 9 and y <= btnBaseY + 1 then
+      elseif x >= dpadX + 3 and x <= dpadX + 5 and y <= btnY + 1 then
         local rotated = rotate(piece.blocks)
         if not collides(board, piece, 0, 0, rotated) then piece.blocks = rotated end
-      elseif x >= 5 and x <= 9 and y >= btnBaseY + 1 then
+      elseif x >= dpadX + 3 and x <= dpadX + 5 and y >= btnY + 1 then
         if not collides(board, piece, 0, 1) then piece.y = piece.y + 1 end
-      elseif x >= w - 13 and x <= w - 10 then
+      elseif x >= startX and x <= startX + 6 then
+        resetGame()
+      elseif x >= bX1 and x <= bX2 then
         if not collides(board, piece, 0, 1) then piece.y = piece.y + 1 end
-      elseif x >= w - 8 and x <= w - 5 then
+      elseif x >= aX1 and x <= aX2 then
         while not collides(board, piece, 0, 1) do piece.y = piece.y + 1 end
       end
     end
