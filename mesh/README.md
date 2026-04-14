@@ -13,4 +13,5 @@ Status monitoring mesh for CC:Tweaked using ender modems.
 2. Run `mesh/node.lua` on every node.
 3. Run `mesh/hub.lua` on the hub computer (optionally with a monitor).
 
-Edit the `MESH_CHANNEL` and node `NODE_ID` inside the scripts if desired.
+Each node will prompt once for a name and role and save it to `mesh/node_config.lua`.
+Edit `MESH_CHANNEL` in both scripts if desired.
