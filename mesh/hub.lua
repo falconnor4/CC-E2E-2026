@@ -21,6 +21,21 @@ local function fmtPos(pos)
   return string.format("%d,%d,%d", pos.x, pos.y, pos.z)
 end
 
+local function primarySignal(signals)
+  if not signals then return 0 end
+  local best = 0
+  for _, value in pairs(signals) do
+    if value and value > best then best = value end
+  end
+  return best
+end
+
+local function drawBar(x, y, width, pct)
+  local fill = math.floor(width * pct)
+  term.setCursorPos(x, y)
+  term.write("[" .. string.rep("=", fill) .. string.rep("-", width - fill) .. "]")
+end
+
 local function draw()
   term.setBackgroundColor(colors.black)
   term.setTextColor(colors.white)
@@ -36,8 +51,19 @@ local function draw()
       term.write(id)
       term.setCursorPos(18, line)
       term.write("Pos " .. fmtPos(node.pos))
+      local pct
+      if node.fuel and node.fuelLimit and node.fuelLimit > 0 then
+        pct = node.fuel / node.fuelLimit
+      else
+        pct = primarySignal(node.signals) / 15
+      end
+
       term.setCursorPos(40, line)
-      term.write("Fuel " .. (node.fuel or "-"))
+      drawBar(40, line, 14, math.max(0, math.min(1, pct or 0)))
+      if node.fuel then
+        term.setCursorPos(57, line)
+        term.write("Fuel " .. node.fuel)
+      end
       line = line + 1
     end
   end
@@ -60,6 +86,8 @@ local function handleMessage(msg)
     id = node.id,
     pos = node.pos,
     fuel = node.fuel,
+    signals = node.signals,
+    fuelLimit = node.fuelLimit,
     lastSeen = os.clock(),
   }
 end

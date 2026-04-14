@@ -4,6 +4,7 @@ local MESH_CHANNEL = 7676
 local CONFIG_PATH = "mesh/node_config.lua"
 local DEFAULT_ROLE = "unassigned"
 local SEND_INTERVAL = 2
+local COMPARATOR_SIDES = { "top", "bottom", "left", "right", "front", "back" }
 
 local modem = peripheral.find("modem")
 if not modem then error("Ender modem not found") end
@@ -21,6 +22,13 @@ end
 local function getFuel()
   if turtle and turtle.getFuelLevel then
     return turtle.getFuelLevel()
+  end
+  return nil
+end
+
+local function getFuelLimit()
+  if turtle and turtle.getFuelLimit then
+    return turtle.getFuelLimit()
   end
   return nil
 end
@@ -67,6 +75,11 @@ local function ensureConfig()
 end
 
 local function getMeta(config)
+  local signals = {}
+  for _, side in ipairs(COMPARATOR_SIDES) do
+    signals[side] = redstone.getAnalogInput(side)
+  end
+
   local info = {
     id = config.id,
     role = config.role,
@@ -74,7 +87,9 @@ local function getMeta(config)
     label = os.getComputerLabel(),
     time = os.clock(),
     fuel = getFuel(),
+    fuelLimit = getFuelLimit(),
     pos = getPosition(),
+    signals = signals,
   }
   return info
 end
